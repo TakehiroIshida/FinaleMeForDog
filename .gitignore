@@ -1,4 +1,12 @@
-.idea
-.DS_Store
-target
+# generated outputs
+out/
+target/
 
+# large local datasets / references
+data/
+
+# test datasets (ignore heavy inputs only)
+test/data/
+
+# OS / editor
+.DS_Store
