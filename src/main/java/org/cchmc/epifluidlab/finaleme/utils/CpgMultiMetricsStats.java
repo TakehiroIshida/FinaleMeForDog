@@ -108,6 +108,9 @@ public class CpgMultiMetricsStats {
 	public ArrayList<String> valueWigs = null;
 
 	// bed.gzに書かれた数値特徴量をCpG周辺から取得するためのファイル
+	// trackname: 出力カラム名
+	// extRegion: CpGからの拡張領域(bp)
+	// trackFileName: tabix index済みのbed.gzファイル
 	@Option(name = "-valueBeds", usage = "tabixed bed.gz files to check the value in these regions. like the recombination rate of some region. -valueBeds trasckName:extRegion:trackFileName. Default: null")
 	public ArrayList<String> valueBeds = null;
 
@@ -158,6 +161,8 @@ public class CpgMultiMetricsStats {
 	 * @param args
 	 * @throws Exception
 	 */
+	// Javaプログラムのエントリーポイント
+	// CLI引数を受け取り、実処理はdoMainメソッドに委譲
 	public static void main(String[] args) throws Exception {
 		CpgMultiMetricsStats cmms = new CpgMultiMetricsStats();
 		// BasicConfigurator.configure();
@@ -165,36 +170,37 @@ public class CpgMultiMetricsStats {
 	}
 
 	@SuppressWarnings("resource")
+	// main()から呼び出され、実際の処理を行うメソッド
 	public void doMain(String[] args)
 			throws Exception {
 
+		// args4jパーサを生成してコマンドライン引数を解析
 		CmdLineParser parser = new CmdLineParser(this);
-		// parser.setUsageWidth(80);
+		// CLI引数のエラー処理
 		try {
 			if (help || args.length < 5)
 				throw new CmdLineException(parser, USAGE, new Throwable());
+			// コマンドライン引数を変換・格納
 			parser.parseArgument(args);
 
 		} catch (CmdLineException e) {
 			System.err.println(e.getMessage());
-			// print the list of available options
 			parser.printUsage(System.err);
 			System.err.println();
 			return;
 		}
 
-		// read input bed file, for each row,
-		// String intervalFile = arguments.get(0);
-		String refFile = arguments.get(0);
-		String cpgListFile = arguments.get(1);
-		String allCpgFile = arguments.get(2);
-		String wgsBamFile = arguments.get(3);
-		String detailFile = arguments.get(4);
+		// 位置引数から入力ファイル・出力ファイルを取得
+		String refFile = arguments.get(0); // 参照ゲノム(2bit)
+		String cpgListFile = arguments.get(1); // CpGリストファイル(BED)
+		String allCpgFile = arguments.get(2); // ゲノム全体のCpGファイル(BED)
+		String wgsBamFile = arguments.get(3); // WGS BAMファイル
+		String detailFile = arguments.get(4); // HMMに渡すCpG × 特徴量ファイル(gzip)
 
+		// 開始時刻を記録
 		initiate();
 
-		// initiate different kinds of reader
-		// reference genome
+		// 2bit参照ゲノムファイルの読み込み
 		TwoBitParser refParser = new TwoBitParser(new File(refFile));
 
 		// String[] names = p.getSequenceNames();
@@ -207,12 +213,15 @@ public class CpgMultiMetricsStats {
 
 		// load interval files
 		log.info("Processing interval file ... ");
+		// BAMファイルの読み込み
+		// ValidationStringency.SILENT は BAMの軽微な不整合で止まらないようにする設定
 		SamReader wgsReader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
 				.open(new File(wgsBamFile));
 		// SAMSequenceDictionary dictSeq =
 		// SAMSequenceDictionaryExtractor.extractDictionary(new File(wgsBamFile));
 		// GenomeLocParser glpSeq = new GenomeLocParser(dictSeq);
 
+		// -excludeRegionsで指定されたBEDファイルの読み込み
 		HashMap<String, IntervalTree<Integer>> ignoreLocCollections = null;
 		if (excludeRegions != null && !excludeRegions.isEmpty()) {
 			log.info("Excluding intervals ... ");
@@ -246,6 +255,7 @@ public class CpgMultiMetricsStats {
 			}
 		}
 
+		// -includeCpgDistオプションが指定された場合は全CpGの位置情報を読み込む
 		HashMap<String, IntervalTree<String>> allCpgLocCollections = new HashMap<String, IntervalTree<String>>();
 		if (includeCpgDist) {
 			log.info("Loading all CpG intervals ... ");
@@ -296,6 +306,8 @@ public class CpgMultiMetricsStats {
 			br1.close();
 		}
 
+		// -overlapRegionsで指定されたBEDファイルの読み込み
+		// CpGがBED区間と重複するかどうかを追加カラムとして出力するために使用(0 or 1)
 		HashMap<String, HashMap<String, IntervalTree<Integer>>> overlapLocStringCollections = null;
 		LinkedHashSet<String> overlapLocString = new LinkedHashSet<String>();
 		if (overlapRegions != null && !overlapRegions.isEmpty()) {
@@ -339,6 +351,8 @@ public class CpgMultiMetricsStats {
 			}
 		}
 
+		// -distantRegionsで指定されたBEDファイルの読み込み
+		// CpGからBED区間までの距離を追加カラムとして出力するために使用
 		HashMap<String, HashMap<String, IntervalTree<String>>> distantLocStringCollections = null;
 		LinkedHashSet<String> distantLocString = new LinkedHashSet<String>();
 		if (distantRegions != null && !distantRegions.isEmpty()) {
@@ -845,6 +859,8 @@ public class CpgMultiMetricsStats {
 				}
 
 				// value in bed file
+				// key: trackname
+				// value: Integer = 拡張領域(bp), TabixFeatureReader<BEDFeature, ?> = 高速区間検索用リーダー
 				HashMap<String, Double> valBedStatCollections = new HashMap<String, Double>();
 				if (valueBedReaders != null) {
 					for (String key : valueBedReaders.keySet()) {
@@ -854,11 +870,13 @@ public class CpgMultiMetricsStats {
 							range = 0 - range;
 						}
 						TabixFeatureReader<BEDFeature, ?> bedReader = valueBedReaders.get(key).getSecond();
+						// CpGの位置を中心にrange bp拡張した区間のBED特徴量を取得
 						CloseableTribbleIterator<BEDFeature> featureIt = bedReader.query(chr,
 								(start - range < 0 ? 1 : start - range + 1), end + range);
 						DescriptiveStatistics statFeature = new DescriptiveStatistics();
 						while (featureIt.hasNext()) {
 							BEDFeature term = featureIt.next();
+							// BEDのscore値を統計量に追加
 							if (!Double.isNaN(term.getScore())) {
 								statFeature.addValue(term.getScore());
 							}
@@ -881,6 +899,8 @@ public class CpgMultiMetricsStats {
 				}
 
 				// value in wig file
+				// key: trackname
+				// value: Integer = 拡張領域(bp), BigWigFileReader = 高速区間検索用リーダー
 				HashMap<String, Double> valWigStatCollections = new HashMap<String, Double>();
 				if (valueWigReaders != null) {
 					for (String key : valueWigReaders.keySet()) {
@@ -888,6 +908,7 @@ public class CpgMultiMetricsStats {
 						if (range < 0) {
 							BigWigFileReader wigReader = valueWigReaders.get(key).getSecond();
 							range = 0 - range;
+							// queryStatsでmean/sum/Nを取得
 							SummaryStatistics statFeature = wigReader.queryStats(chr,
 									(start - range < 0 ? 1 : start - range), end + range);
 
@@ -1103,6 +1124,7 @@ public class CpgMultiMetricsStats {
 			}
 		}
 
+		// 終了時刻を記録
 		finish();
 
 	}
