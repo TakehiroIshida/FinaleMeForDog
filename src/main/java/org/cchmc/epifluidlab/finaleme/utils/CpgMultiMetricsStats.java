@@ -27,7 +27,7 @@ import java.io.FileReader;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.HashMap; // keyに対応するvalueを格納する辞書型データ構造を生成
 import java.util.Iterator;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -222,31 +222,45 @@ public class CpgMultiMetricsStats {
 		// GenomeLocParser glpSeq = new GenomeLocParser(dictSeq);
 
 		// -excludeRegionsで指定されたBEDファイルの読み込み
+		// keyに対応する除外区間を格納する辞書型データ構造を生成
 		HashMap<String, IntervalTree<Integer>> ignoreLocCollections = null;
 		if (excludeRegions != null && !excludeRegions.isEmpty()) {
 			log.info("Excluding intervals ... ");
 			ignoreLocCollections = new HashMap<String, IntervalTree<Integer>>();
 
+			// 除外領域ファイルを1つずつ処理するループ処理
 			for (String excludeRegion : excludeRegions) {
+				// BEDファイルを1行ずつ読み込むためのBufferedReaderを生成
 				BufferedReader br = new BufferedReader(new FileReader(excludeRegion));
+				// 読み込んだ行を格納するための変数
 				String line;
 
+				// BEDファイルを1行ずつ読み込むループ処理
 				while ((line = br.readLine()) != null) {
+					// コメント行はスキップ
 					if (line.startsWith("#"))
 						continue;
+					// タブ区切りで行を分割
 					String[] splitLines = line.split("\t");
+					// 染色体名・start・endの3つの情報が揃っていない場合はスキップ
 					if (splitLines.length < 3) {
 						continue;
 					}
+					// 染色体名を格納
 					String chr = splitLines[0];
+					// 開始位置を格納
 					int start = Integer.parseInt(splitLines[1]);
+					// 終了位置を格納
 					int end = Integer.parseInt(splitLines[2]);
 					IntervalTree<Integer> tree;
+					// 既にその染色体名が辞書に存在する場合は対応するIntervalTreeを取得
 					if (ignoreLocCollections.containsKey(chr)) {
 						tree = ignoreLocCollections.get(chr);
+						// 存在しない場合は新しいIntervalTreeを生成
 					} else {
 						tree = new IntervalTree<Integer>();
 					}
+					// 除外区間をIntervalTreeに追加
 					tree.put(start, end, 1);
 					ignoreLocCollections.put(chr, tree);
 				}
@@ -255,12 +269,14 @@ public class CpgMultiMetricsStats {
 			}
 		}
 
-		// -includeCpgDistオプションが指定された場合は全CpGの位置情報を読み込む
+		// -includeCpgDistオプションがTrueに指定された場合はCpG間の距離を計算（渡されたCpG座標を使用）
+		// keyに対応する除外区間を格納する辞書型データ構造を生成（染色体ごとにCpG座標を格納）
 		HashMap<String, IntervalTree<String>> allCpgLocCollections = new HashMap<String, IntervalTree<String>>();
 		if (includeCpgDist) {
 			log.info("Loading all CpG intervals ... ");
 			GZIPInputStream gzipInputStream = null;
 			BufferedReader br1;
+			// .gzファイルの場合はGZIPInputStreamを使用して読み込む
 			if (allCpgFile.endsWith(".gz")) {
 				gzipInputStream = new GZIPInputStream(new FileInputStream(allCpgFile));
 				br1 = new BufferedReader(new InputStreamReader(gzipInputStream));
@@ -288,7 +304,9 @@ public class CpgMultiMetricsStats {
 				} else {
 					tree = new IntervalTree<String>();
 				}
+				// strandはゲノム配列に対する向きを示す
 				String strand = ".";
+				// strandがある場合は取得
 				if (splitLines.length >= 6) {
 					if (splitLines[5].equalsIgnoreCase("-")) {
 						strand = "-";
@@ -447,7 +465,11 @@ public class CpgMultiMetricsStats {
 
 		}
 
-		LinkedHashSet<String> kmerCollections = new LinkedHashSet<String>();
+		// k-merの準備
+		// -kmerStringオプションで指定されたファイルからk-merを読み込むか、kmerLenオプションで指定された長さまでの全k-merを自動生成
+		// 最終的に列として出力するk-merの集合
+		LinkedHashSet<String> kmerCollections = new LinkedHashSet<String>(); // 重複なしで順序を保持する集合
+		// k-merファイルが指定されていればそれを読み込む
 		if (kmerString != null) {
 			log.info("Loading selected K-mer file ... ");
 			BufferedReader br = new BufferedReader(new FileReader(kmerString));
@@ -459,6 +481,7 @@ public class CpgMultiMetricsStats {
 
 			}
 			br.close();
+			// k-merファイルが指定されていなければkmerLenまでの全k-merを自動生成
 		} else {
 			log.info("Automate generate all k-mer until length " + kmerLen);
 			for (int i = 2; i <= kmerLen; i++) {
@@ -470,6 +493,7 @@ public class CpgMultiMetricsStats {
 
 		}
 
+		// 出力ファイルの追加カラム名を準備
 		String header = "";
 		if (overlapLocString.size() > 0) {
 			for (String key : overlapLocString) {
@@ -504,6 +528,7 @@ public class CpgMultiMetricsStats {
 
 		}
 
+		// 解析対象CpGリストの読み込み
 		log.info("Loading CpG interval file ... ");
 		HashMap<String, IntervalTree<String>> cpgCollections = new HashMap<String, IntervalTree<String>>();
 		GZIPInputStream gzipInputStream1 = null;
@@ -552,6 +577,8 @@ public class CpgMultiMetricsStats {
 		}
 		br.close();
 
+		// 正規化用の総リード数を計算
+		// -totalReadsInBamオプションが指定されていればそれを使用、そうでなければBAMファイルから計算
 		double readsNumTotal = 0;
 		if (totalReadsInBam > 0) {
 			log.info("Get total reads number used for scaling from input option -totalReadsInBam ... ");
@@ -579,6 +606,7 @@ public class CpgMultiMetricsStats {
 		readsNumTotal = readsNumTotal / 1000000;
 		log.info("Output value for each CpG in each DNA fragment ... ");
 		FileOutputStream output = new FileOutputStream(detailFile);
+		// 出力ファイルを開いてヘッダーを書き込む
 		OutputStreamWriter writer = new OutputStreamWriter(new GZIPOutputStream(output), "UTF-8");
 
 		// basic
@@ -594,6 +622,7 @@ public class CpgMultiMetricsStats {
 
 		long i = 0;
 		String prevChr = "";
+		// cpgCollectionsは解析対象CpGのIntervalTreeをchrごとに持っている（辞書型データ構造）
 		for (String chr : cpgCollections.keySet()) {
 			if (chr.equalsIgnoreCase("chrM")) {
 				continue;
@@ -1136,10 +1165,12 @@ public class CpgMultiMetricsStats {
 				|| (skipSecondEnd && r.getReadPairedFlag() && r.getSecondOfPairFlag());
 	}
 
+	// 処理開始時刻を記録
 	private void initiate() {
 		startTime = System.currentTimeMillis();
 	}
 
+	// 処理終了時刻を記録して処理時間をログに出力
 	private void finish() {
 		long endTime = System.currentTimeMillis();
 		double totalTime = endTime - startTime;
