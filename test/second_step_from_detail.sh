@@ -11,7 +11,8 @@ CP="${JAR}:lib/*"
 DETAILS="out/CpgMultiMetricsStats.hg19.details.bed.gz"
 
 OUT_DIR="out"
-INPUT_MAT="${OUT_DIR}/input_matrix.features3.tsv.gz"
+# ここは「detailsをそのまま学習入力として渡す」ので、名前だけ input_matrix にしておく
+INPUT_MAT="${OUT_DIR}/input_matrix.details.tsv.gz"
 MODEL_OUT="${OUT_DIR}/selftrained.states2.features3.hmm_model"
 PRED_TRAIN="${OUT_DIR}/training.pred.gz"
 LOG="${OUT_DIR}/step2_train.$(date +%Y%m%d_%H%M%S).log"
@@ -26,31 +27,19 @@ for f in "$JAR" "$DETAILS"; do
   fi
 done
 
-# --- build input matrix (chr, start, end, readName, fraglen, cov, distToCenter) ---
-# details header:
-# chr start end readName FragLen Frag_strand methy_stat Norm_Frag_cov baseQ Offset_frag Dist_frag_end methyPrior
+# --- build input matrix: keep DETAILS columns (drop header only) ---
 TMP_INPUT="${INPUT_MAT}.tmp.$$"
 rm -f "$TMP_INPUT"
 
+# details はヘッダ付きなので除去。
+# methyPrior の NaN が気になる場合もあるので 0 に置換（列数は維持）
 zcat "$DETAILS" \
 | awk 'BEGIN{FS=OFS="\t"}
   NR==1{next}
   {
-    chr=$1; start=$2; end=$3; read=$4;
-    fraglen=$5+0;
-    cov=$8+0;
-    offset=$10+0;
-
-    # minimal guards
-    if (read=="" || fraglen<=0) next;
-
-    # distance to fragment center (integer bp):
-    # center = floor(fraglen/2)
-    center = int(fraglen/2);
-    dist = offset - center;
-    if (dist < 0) dist = -dist;
-
-    print chr, start, end, read, fraglen, cov, dist
+    # methyPrior は末尾列にいる想定。空/NaNなら0にする（列数を変えない）
+    if ($NF=="NaN" || $NF=="nan" || $NF=="") $NF=0;
+    print
   }' \
 | gzip -c > "$TMP_INPUT"
 
@@ -60,8 +49,7 @@ mv -f "$TMP_INPUT" "$INPUT_MAT"
 echo "OK: wrote $INPUT_MAT" >&2
 
 # --- Step2: train (no -decodeModeOnly) ---
-# 完走優先: iteration=20, states=2, features=3
-# 既定のフラグメント内最小CpG数フィルタで全除外になるのを避けるため miniDataPoints を下げる
+# 完走優先: miniDataPoints を 1 に落として全除外を回避
 java -Xmx12G -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
   -features 3 \
   -states 2 \
