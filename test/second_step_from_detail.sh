@@ -11,13 +11,23 @@ CP="${JAR}:lib/*"
 DETAILS="out/CpgMultiMetricsStats.hg19.details.bed.gz"
 
 OUT_DIR="out"
-# ここは「detailsをそのまま学習入力として渡す」ので、名前だけ input_matrix にしておく
-INPUT_MAT="${OUT_DIR}/input_matrix.details.tsv.gz"
 MODEL_OUT="${OUT_DIR}/selftrained.states2.features3.hmm_model"
 PRED_TRAIN="${OUT_DIR}/training.pred.gz"
 LOG="${OUT_DIR}/step2_train.$(date +%Y%m%d_%H%M%S).log"
 
 mkdir -p "$OUT_DIR"
+
+# -------- parameters --------
+# Usage:
+#   ./second_step_from_detail.sh [N_FRAGS] [XMX_GB]
+# Examples:
+#   ./second_step_from_detail.sh 50000
+#   ./second_step_from_detail.sh 200000 24
+N_FRAGS="${1:-50000}"
+XMX_GB="${2:-12}"
+
+# readName単位で抽出した学習用入力（details形式を維持）
+INPUT_MAT="${OUT_DIR}/input_matrix.details.first${N_FRAGS}frags.tsv.gz"
 
 # --- sanity checks ---
 for f in "$JAR" "$DETAILS"; do
@@ -27,19 +37,27 @@ for f in "$JAR" "$DETAILS"; do
   fi
 done
 
-# --- build input matrix: keep DETAILS columns (drop header only) ---
+# --- build input matrix by sampling first N_FRAGS fragments (keep series by readName) ---
 TMP_INPUT="${INPUT_MAT}.tmp.$$"
 rm -f "$TMP_INPUT"
 
-# details はヘッダ付きなので除去。
-# methyPrior の NaN が気になる場合もあるので 0 に置換（列数は維持）
 zcat "$DETAILS" \
-| awk 'BEGIN{FS=OFS="\t"}
+| awk -v N="$N_FRAGS" 'BEGIN{FS=OFS="\t"}
   NR==1{next}
   {
-    # methyPrior は末尾列にいる想定。空/NaNなら0にする（列数を変えない）
-    if ($NF=="NaN" || $NF=="nan" || $NF=="") $NF=0;
+    rn=$4
+    if (!(rn in keep)) {
+      if (k >= N) next
+      keep[rn]=1
+      k++
+    }
+    # methyPrior is last column; keep column count, replace missing/NaN with 0
+    if ($NF=="NaN" || $NF=="nan" || $NF=="") $NF=0
     print
+  }
+  END{
+    # progress info to stderr
+    print "INFO: selected fragments =", k > "/dev/stderr"
   }' \
 | gzip -c > "$TMP_INPUT"
 
@@ -48,9 +66,16 @@ mv -f "$TMP_INPUT" "$INPUT_MAT"
 
 echo "OK: wrote $INPUT_MAT" >&2
 
+# --- quick checks (optional but cheap) ---
+echo "INFO: unique readName count (<= N_FRAGS):" >&2
+zcat "$INPUT_MAT" | cut -f4 | sort -u | wc -l >&2
+
+echo "INFO: top readName multiplicities (should show >=2 if series exist):" >&2
+zcat "$INPUT_MAT" | cut -f4 | sort | uniq -c | sort -nr | head >&2
+
 # --- Step2: train (no -decodeModeOnly) ---
 # 完走優先: miniDataPoints を 1 に落として全除外を回避
-java -Xmx12G -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
+java -Xmx"${XMX_GB}G" -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
   -features 3 \
   -states 2 \
   -iteration 20 \
