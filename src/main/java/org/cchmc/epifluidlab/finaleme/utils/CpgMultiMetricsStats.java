@@ -466,6 +466,7 @@ public class CpgMultiMetricsStats {
 		}
 
 		// k-merの準備
+		// -kmerString : 特徴量として扱いたいk-merを指定
 		// -kmerStringオプションで指定されたファイルからk-merを読み込むか、kmerLenオプションで指定された長さまでの全k-merを自動生成
 		// 最終的に列として出力するk-merの集合
 		LinkedHashSet<String> kmerCollections = new LinkedHashSet<String>(); // 重複なしで順序を保持する集合
@@ -477,7 +478,7 @@ public class CpgMultiMetricsStats {
 			while ((line = br.readLine()) != null) {
 				if (line.startsWith("#"))
 					continue;
-				kmerCollections.add(line);
+				kmerCollections.add(line); // 出力ヘッダーに指定したkmerを追加
 
 			}
 			br.close();
@@ -494,6 +495,7 @@ public class CpgMultiMetricsStats {
 		}
 
 		// 出力ファイルの追加カラム名を準備
+		// headerという空の文字列を作成
 		String header = "";
 		if (overlapLocString.size() > 0) {
 			for (String key : overlapLocString) {
@@ -528,8 +530,9 @@ public class CpgMultiMetricsStats {
 
 		}
 
-		// 解析対象CpGリストの読み込み
+		// 解析対象CpGリストを染色体ごとにまとめて保持するための準備
 		log.info("Loading CpG interval file ... ");
+		// 解析対象CpGを染色体ごとに整理して持つ辞書
 		HashMap<String, IntervalTree<String>> cpgCollections = new HashMap<String, IntervalTree<String>>();
 		GZIPInputStream gzipInputStream1 = null;
 		BufferedReader br;
@@ -541,25 +544,34 @@ public class CpgMultiMetricsStats {
 			br = new BufferedReader(new FileReader(cpgListFile));
 		}
 
+		// 行を読むための変数を用意
 		String line;
 
 		while ((line = br.readLine()) != null) {
+			// コメント行や不要な行は無視
 			if (line.startsWith("#"))
 				continue;
 			String[] splitLines = line.split("\t");
 			if (splitLines.length < 3) {
 				continue;
 			}
+			// BEDファイルから染色体名を抽出
 			String chr = splitLines[0];
+			// 開始位置を抽出
 			int start = Integer.parseInt(splitLines[1]);
+			// 終了位置を抽出
 			int end = Integer.parseInt(splitLines[2]);
+			// key : 染色体名
+			// value : CpG区間の集合
 			IntervalTree<String> tree;
 
+			// cpgCollectionsは染色体→CpG集合の辞書
 			if (cpgCollections.containsKey(chr)) {
 				tree = cpgCollections.get(chr);
 			} else {
 				tree = new IntervalTree<String>();
 			}
+			// BED6以上だったらstrandを読んで登録
 			String strand = ".";
 			if (splitLines.length >= 6) {
 				if (splitLines[5].equalsIgnoreCase("-")) {
@@ -579,6 +591,7 @@ public class CpgMultiMetricsStats {
 
 		// 正規化用の総リード数を計算
 		// -totalReadsInBamオプションが指定されていればそれを使用、そうでなければBAMファイルから計算
+		// 総リード数を入れる変数を準備
 		double readsNumTotal = 0;
 		if (totalReadsInBam > 0) {
 			log.info("Get total reads number used for scaling from input option -totalReadsInBam ... ");
@@ -623,6 +636,7 @@ public class CpgMultiMetricsStats {
 		long i = 0;
 		String prevChr = "";
 		// cpgCollectionsは解析対象CpGのIntervalTreeをchrごとに持っている（辞書型データ構造）
+		// keyset()で染色体ごとに処理を回す
 		for (String chr : cpgCollections.keySet()) {
 			if (chr.equalsIgnoreCase("chrM")) {
 				continue;
@@ -632,6 +646,7 @@ public class CpgMultiMetricsStats {
 				prevChr = chr;
 				refParser.setCurrentSequence(chr);
 			}
+			// useNoChrPrefixBamがtrueの場合はchrを削除して表記を合わせる
 			String bamChr = chr;
 			if (useNoChrPrefixBam) {
 
@@ -640,6 +655,7 @@ public class CpgMultiMetricsStats {
 				bamChr = matcher1.replaceAll("");
 			}
 			IntervalTree<String> cpgChrCollections = cpgCollections.get(chr);
+			// 染色体に属するCpGを1つずつ抽出
 			Iterator<Node<String>> cpgIterator = cpgChrCollections.iterator();
 			while (cpgIterator.hasNext()) {
 				Node<String> cpg = cpgIterator.next();
@@ -648,11 +664,13 @@ public class CpgMultiMetricsStats {
 				int fragMostLeft = start + 1;
 				int fragMostRight = end;
 
+				// 各CpGについてBAMファイルからCpGに重なるリードを取得
 				SAMRecordIterator wgsIt = wgsReader.queryOverlapping(bamChr, start + 1, end);// start 1-based, inclusive
 																								// start of interval of
 																								// interest. Zero
 																								// implies start of the
 																								// reference sequence.
+				// フラグメント単位に準備
 				HashMap<String, SAMRecord> countedReads = new HashMap<String, SAMRecord>();
 				// log.info("testincpg" + i + "\t" + cpgCollections.size() + "\t" +
 				// wgsIt.hasNext() + "\t" + chr + "\t" + start + "\t" + end);
