@@ -17,13 +17,18 @@ LOG="${OUT_DIR}/step2_train.$(date +%Y%m%d_%H%M%S).log"
 mkdir -p "$OUT_DIR"
 
 # Usage:
-#   ./second_step_from_detail.sh [N_FRAGS] [XMX_GB] [MINI_DP] [HASH_DIV]
-N_FRAGS="${1:-50000}"
+#   ./second_step_from_detail.sh [N_FRAGS] [XMX_GB] [MINI_DP] [HASH_DIV] [MAX_PER_READ]
+#
+# Examples:
+#   ./second_step_from_detail.sh 5000 12 2 5 20
+#   ./second_step_from_detail.sh 10000 24 2 5 30
+N_FRAGS="${1:-5000}"
 XMX_GB="${2:-12}"
-MINI_DP="${3:-2}"        # trainingでは2未満は2に引き上げられる :contentReference[oaicite:2]{index=2}
-HASH_DIV="${4:-10}"      # 小さくするとreadNameを多めに拾う
+MINI_DP="${3:-2}"
+HASH_DIV="${4:-5}"
+MAX_PER_READ="${5:-20}"   # 1フラグメントから最大何行出すか（OOM対策）
 
-INPUT_MAT="${OUT_DIR}/input_matrix.details.hashN${N_FRAGS}.div${HASH_DIV}.tsv.gz"
+INPUT_MAT="${OUT_DIR}/input_matrix.details.hashN${N_FRAGS}.div${HASH_DIV}.max${MAX_PER_READ}.tsv.gz"
 
 for f in "$JAR" "$DETAILS"; do
   if [ ! -f "$f" ]; then
@@ -35,13 +40,11 @@ done
 TMP_INPUT="${INPUT_MAT}.tmp.$$"
 rm -f "$TMP_INPUT"
 
-# details header:
-# chr start end readName FragLen Frag_strand methy_stat Norm_Frag_cov baseQ Offset_frag Dist_frag_end methyPrior
 zcat "$DETAILS" \
-| awk -v N="$N_FRAGS" -v DIV="$HASH_DIV" 'BEGIN{FS=OFS="\t"}
+| awk -v N="$N_FRAGS" -v DIV="$HASH_DIV" -v MAXR="$MAX_PER_READ" 'BEGIN{FS=OFS="\t"}
   NR==1{print; next}
 
-  # 列ズレ行を排除（重要）
+  # 列ズレ行を排除
   NF!=12{next}
 
   {
@@ -50,17 +53,15 @@ zcat "$DETAILS" \
     offset=$10+0
     prior=$12
 
-    # FinaleMe.processMatrixFile() の行フィルタに合わせる :contentReference[oaicite:3]{index=3}
+    # FinaleMe 側の行フィルタに寄せる :contentReference[oaicite:1]{index=1}
     if (fraglen >= 500 || fraglen <= 30) next
     if (baseQ <= 5) next
     if (offset < 0) next
-
-    # FinaleMeはpriorがNaNだとその行を捨てるので0に補正 :contentReference[oaicite:4]{index=4}
     if (prior=="NaN" || prior=="nan" || prior=="") $12=0
 
     rn=$4
 
-    # readNameを先頭偏りなく拾う（readNameが数値の前提）
+    # readName を散らして採用（先頭偏り回避）
     if (!(rn in keep)) {
       if ((rn % DIV) != 0) next
       if (k >= N) next
@@ -68,25 +69,22 @@ zcat "$DETAILS" \
       k++
     }
 
+    # OOM対策：1フラグメントあたりの出力行数を制限
+    if (++seen[rn] > MAXR) next
+
     print
   }
   END{
     print "INFO: selected fragments =", k > "/dev/stderr"
-    if (k < N) {
-      print "WARN: selected fragments < N_FRAGS. Lower HASH_DIV (e.g., 5) to pick more." > "/dev/stderr"
-    }
+    total=0
+    for (x in seen) total += seen[x]
+    print "INFO: total lines written =", total > "/dev/stderr"
   }' \
 | gzip -c > "$TMP_INPUT"
 
 gzip -t "$TMP_INPUT"
 mv -f "$TMP_INPUT" "$INPUT_MAT"
 echo "OK: wrote $INPUT_MAT" >&2
-
-echo "INFO: unique readName count (post-filter):" >&2
-zcat "$INPUT_MAT" | awk 'BEGIN{FS="\t"} NR>1{u[$4]=1} END{print length(u)}' >&2
-
-echo "INFO: top readName multiplicities (post-filter):" >&2
-zcat "$INPUT_MAT" | awk 'BEGIN{FS="\t"} NR>1{c[$4]++} END{for(k in c) print c[k],k}' | sort -nr | head >&2
 
 java -Xmx"${XMX_GB}G" -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
   -features 3 \
