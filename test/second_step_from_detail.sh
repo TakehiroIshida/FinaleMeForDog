@@ -86,6 +86,11 @@ gzip -t "$TMP_INPUT"
 mv -f "$TMP_INPUT" "$INPUT_MAT"
 echo "OK: wrote $INPUT_MAT" >&2
 
+echo "INFO: INPUT_MAT=$INPUT_MAT" >&2
+ls -lh "$INPUT_MAT" >&2
+echo -n "INFO: INPUT_MAT lines=" >&2
+zcat "$INPUT_MAT" | wc -l >&2
+
 java -Xmx"${XMX_GB}G" -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
   -features 3 \
   -states 2 \
