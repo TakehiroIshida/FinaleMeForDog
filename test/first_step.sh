@@ -5,7 +5,12 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
 JAR="target/FinaleMe-0.58-jar-with-dependencies.jar"
-CP="${JAR}:lib/gatk-package-distribution-3.3.jar:lib/sis-jhdf5-batteries_included.jar:lib/java-genomics-io.jar:lib/igv.jar"
+GATK="lib/gatk-package-distribution-3.3.jar"
+HDF5="lib/sis-jhdf5-batteries_included.jar"
+GENIO="lib/java-genomics-io.jar"
+IGV="lib/igv.jar"
+
+CP="${JAR}:${GATK}:${HDF5}:${GENIO}:${IGV}"
 
 CG="data/zenodo_ref/CG_motif.hg19.common_chr.pos_only.bedgraph.gz"
 DARK="data/zenodo_ref/dark.hg19.bed"
@@ -20,7 +25,7 @@ LOG="${OUT_DIR}/first_step.$(date +%Y%m%d_%H%M%S).log"
 
 mkdir -p "$OUT_DIR"
 
-for f in "$JAR" "${REF2BIT}" "${CG}" "${DARK}" "${PRIOR}" "${BAM}"; do
+for f in "$JAR" "$GATK" "$HDF5" "$GENIO" "$IGV" "${REF2BIT}" "${CG}" "${DARK}" "${PRIOR}" "${BAM}"; do
   if [ ! -f "$f" ]; then
     echo "ERROR: missing file: $f" >&2
     exit 1
