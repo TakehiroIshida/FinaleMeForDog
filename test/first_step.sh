@@ -19,8 +19,8 @@ REF2BIT="data/zenodo_ref/hg19.2bit"
 PRIOR="data/zenodo_ref/wgbs_buffyCoat_jensen2015GB.methy.hg19.bw"
 
 OUT_DIR="out"
-OUT1="${OUT_DIR}/CpgMultiMetricsStats.hg19.details.bed.gz"
-TMP_OUT="${OUT1}.tmp.$$"
+OUT="${OUT_DIR}/CpgMultiMetricsStats.hg19.details.bed.gz"
+TMP_OUT="${OUT}.tmp.$$"
 LOG="${OUT_DIR}/first_step.$(date +%Y%m%d_%H%M%S).log"
 
 mkdir -p "$OUT_DIR"
@@ -52,6 +52,6 @@ java -Xmx24G -cp "$CP" org.cchmc.epifluidlab.finaleme.utils.CpgMultiMetricsStats
   2> "$LOG"
 
 gzip -t "$TMP_OUT"
-mv -f "$TMP_OUT" "$OUT1"
-echo "OK: wrote $OUT1" >&2
+mv -f "$TMP_OUT" "$OUT"
+echo "OK: wrote $OUT" >&2
 echo "LOG: $LOG" >&2
