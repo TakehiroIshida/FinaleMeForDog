@@ -10,7 +10,7 @@ GLOB="${PRED_DIR}/prediction.part*.gz"
 OUT_DIR="out"
 mkdir -p "$OUT_DIR"
 
-OUT_ALL="${OUT_DIR}/prediction.all.parts128.gz"
+OUT_ALL="${OUT_DIR}/prediction.all.gz"
 TMP_OUT="${OUT_ALL}.tmp.$$"
 rm -f "$TMP_OUT"
 
