@@ -20,15 +20,23 @@ if [ "${#PRED_FILES[@]}" -eq 0 ]; then
   exit 1
 fi
 
-# sort by part number (lexicographic works with 000..127)
 IFS=$'\n' PRED_FILES_SORTED=($(printf "%s\n" "${PRED_FILES[@]}" | sort))
 unset IFS
 
-echo "INFO: merging ${#PRED_FILES_SORTED[@]} files into $OUT_ALL" >&2
+echo "INFO: merging ${#PRED_FILES_SORTED[@]} files" >&2
 
-# header は最初のファイルだけ採用し、以降は2行目以降を連結
+# ヘッダは python で安全に取得
+HEADER="$(python - << 'PY'
+import gzip, sys
+import glob
+files = sorted(glob.glob("out/pred_parts/prediction.part*.gz"))
+with gzip.open(files[0], "rt") as f:
+    print(f.readline().rstrip("\n"))
+PY
+)"
+
 {
-  zcat "${PRED_FILES_SORTED[0]}" | head -n 1
+  printf '%s\n' "$HEADER"
   for f in "${PRED_FILES_SORTED[@]}"; do
     zcat "$f" | awk 'NR>1'
   done
