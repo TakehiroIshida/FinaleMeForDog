@@ -38,8 +38,10 @@ done
 
 # collect train parts (part000..)
 TRAIN_PARTS=()
-for i in $(seq -w 0 $((TRAIN_PART_N-1))); do
-  f="${PARTS_DIR}/input_matrix.part${i}.tsv.gz"
+for ((i=0; i<TRAIN_PART_N; i++)); do
+  part=$(printf "%03d" "$i")
+  f="${PARTS_DIR}/input_matrix.part${part}.tsv.gz"
+
   if [ ! -f "$f" ]; then
     echo "ERROR: missing train part: $f" >&2
     exit 1
