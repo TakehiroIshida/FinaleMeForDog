@@ -10,8 +10,7 @@ CP="${JAR}:lib/*"
 
 # ===== Inputs =====
 PARTS_DIR="out/parts"
-# 学習に使う part 数（小さめで十分。まずは 8 くらい推奨）
-TRAIN_PART_N="${1:-8}"
+TRAIN_PART_N="${1:-8}"     # 学習に使うpart数（まず8推奨）
 
 # ===== Outputs =====
 OUT_DIR="out"
@@ -29,19 +28,16 @@ ITER="${5:-20}"
 MINI_DP="${6:-2}"
 
 # ===== Checks =====
-for f in "$JAR"; do
-  if [ ! -f "$f" ]; then
-    echo "ERROR: missing file: $f" >&2
-    exit 1
-  fi
-done
+if [ ! -f "$JAR" ]; then
+  echo "ERROR: missing file: $JAR" >&2
+  exit 1
+fi
 
-# collect train parts (part000..)
+# collect train parts: part000..part(N-1)
 TRAIN_PARTS=()
 for ((i=0; i<TRAIN_PART_N; i++)); do
-  part=$(printf "%03d" "$i")
+  part="$(printf "%03d" "$i")"
   f="${PARTS_DIR}/input_matrix.part${part}.tsv.gz"
-
   if [ ! -f "$f" ]; then
     echo "ERROR: missing train part: $f" >&2
     exit 1
@@ -56,16 +52,26 @@ echo "INFO: PRED_TRAIN=$PRED_TRAIN" >&2
 echo "INFO: LOG=$LOG" >&2
 
 # ===== Build a single training input (concatenate parts) =====
-# FinaleMe は1ファイル入力想定なので、まず学習用に結合する
-TRAIN_INPUT="${OUT_DIR}/input_matrix.train.parts0-$(printf "%03d" $((TRAIN_PART_N-1))).tsv.gz"
+# FinaleMe は1ファイル入力なので、学習用に結合ファイルを作る
+LAST_PART="$(printf "%03d" $((TRAIN_PART_N-1)))"
+TRAIN_INPUT="${OUT_DIR}/input_matrix.train.parts000-${LAST_PART}.tsv.gz"
 TMP_TRAIN="${TRAIN_INPUT}.tmp.$$"
 rm -f "$TMP_TRAIN"
 
-# ヘッダは最初の part の1行目だけ採用し、以降の part はヘッダを落として結合
+# header を安全に取得（パイプで head を使わない）
+HEADER="$(python - << 'PY'
+import gzip
+p="out/parts/input_matrix.part000.tsv.gz"
+with gzip.open(p, "rt") as f:
+    print(f.readline().rstrip("\n"))
+PY
+)"
+
+# 結合：先頭に header、各partは2行目以降を足す（awk NR>1）
 {
-  zcat "${TRAIN_PARTS[0]}" | head -n 1
+  printf '%s\n' "$HEADER"
   for f in "${TRAIN_PARTS[@]}"; do
-    zcat "$f" | tail -n +2
+    zcat "$f" | awk 'NR>1'
   done
 } | gzip -c > "$TMP_TRAIN"
 
@@ -78,7 +84,7 @@ echo -n "INFO: TRAIN_INPUT lines=" >&2
 zcat "$TRAIN_INPUT" | wc -l >&2
 
 # ===== Train (and also write training prediction) =====
-# 重要: decode-only は付けない（学習を実行する）
+# stdout/stderr をどちらもログに保存
 java -Xmx"${XMX_GB}G" -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
   -features "$FEATURES" \
   -states "$STATES" \
@@ -87,7 +93,7 @@ java -Xmx"${XMX_GB}G" -cp "$CP" org.cchmc.epifluidlab.finaleme.hmm.FinaleMe \
   "$MODEL_OUT" \
   "$TRAIN_INPUT" \
   "$PRED_TRAIN" \
-  2> "$LOG"
+  > "$LOG" 2>&1
 
 echo "OK: wrote $MODEL_OUT" >&2
 echo "OK: wrote $PRED_TRAIN" >&2
