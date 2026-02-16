@@ -11,6 +11,7 @@ mkdir -p "$OUT_DIR"
 
 # Usage:
 #   ./make_input_matrix_full.sh [MAX_PER_READ]
+#   MAX_PER_READ: 1 readName あたりの行数上限（OOM防止のため）。デフォルト20。
 #
 # Examples:
 #   ./make_input_matrix_full.sh 20
@@ -32,18 +33,18 @@ echo "INFO: DETAILS=$DETAILS" >&2
 echo "INFO: MAX_PER_READ=$MAX_PER_READ" >&2
 echo "INFO: OUTPUT=$INPUT_MAT_FULL" >&2
 
-# DETAILS (12 cols) -> INPUT_MAT_FULL (tsv.gz)
-#  - Keep the same row-level filters as FinaleMe.processMatrixFile:
+# DETAILS (12列) -> INPUT_MAT_FULL (tsv.gz) へ変換
+#  - FinaleMe.processMatrixFile と同じ行レベルのフィルタを適用:
 #      fragLen: 30 < fragLen < 500
 #      baseQ  : > 5
 #      offset : >= 0
 #      prior  : NaN/empty -> 0
-#  - Additionally limit number of lines per readName (MAX_PER_READ) to avoid OOM.
+#  - OOM（メモリ不足）回避のため readName ごとの出力行数を制限（MAX_PER_READ）
 zcat "$DETAILS" \
 | awk -v MAXR="$MAX_PER_READ" 'BEGIN{FS=OFS="\t"}
   NR==1 { print; next }
 
-  # Drop malformed lines
+  # 12列ではない不要な行を除外
   NF!=12 { next }
 
   {
@@ -52,17 +53,17 @@ zcat "$DETAILS" \
     offset  = $10 + 0
     prior   = $12
 
-    # Align with FinaleMe row-level filters
+    # FinaleMeと同じフィルタを適用
     if (fraglen >= 500 || fraglen <= 30) next
     if (baseQ <= 5) next
     if (offset < 0) next
 
-    # Prior cleanup
+    # prior が NaN/empty の場合は 0 に置換
     if (prior=="NaN" || prior=="nan" || prior=="") $12 = 0
 
     rn = $4
 
-    # Cap lines per fragment/readName (OOM guard)
+    # readName あたりの行数を制限（OOM防止）
     if (++seen[rn] > MAXR) next
 
     print
