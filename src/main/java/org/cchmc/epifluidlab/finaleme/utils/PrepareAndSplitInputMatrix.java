@@ -8,17 +8,27 @@ import java.util.Map;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+/**
+ * PrepareAndSplitInputMatrix
+ *
+ * Input : CpgMultiMetricsStats.hg19.details.bed.gz (12 columns, header
+ * included)
+ * Output: out_dir/input_matrix.partXXX.tsv.gz (header included)
+ *
+ * Assumptions (project-internal, stable):
+ * - Input has exactly 12 tab-delimited columns and a header line.
+ * - Column order matches CpgMultiMetricsStats output.
+ * - methyPrior is either numeric or "NaN" (or empty); NaN/empty is normalized
+ * to 0.
+ */
 public class PrepareAndSplitInputMatrix {
 
-    // details / input_matrix の列（1-based）
+    // 1-based column indices (match CpgMultiMetricsStats output)
     private static final int COL_READNAME_1B = 4; // readName
     private static final int COL_FRAGLEN_1B = 5; // FragLen
     private static final int COL_BASEQ_1B = 9; // baseQ
     private static final int COL_OFFSET_1B = 10; // Offset_frag
     private static final int COL_PRIOR_1B = 12; // methyPrior
-
-    // priorの異常WARNを出しすぎない
-    private static final long MAX_PRIOR_WARN = 50;
 
     public static void main(String[] args) throws Exception {
         if (args.length < 4) {
@@ -45,111 +55,77 @@ public class PrepareAndSplitInputMatrix {
 
         Files.createDirectories(outDir);
 
-        // parts個のgzip出力を開く
         PartWriter[] writers = new PartWriter[parts];
         for (int i = 0; i < parts; i++) {
             Path out = outDir.resolve(String.format("input_matrix.part%03d.tsv.gz", i));
             writers[i] = new PartWriter(out);
         }
 
-        // MAX_PER_READ用: readName -> count
+        // MAX_PER_READ: readName -> emitted lines count
         Map<String, Integer> seen = new HashMap<>(1 << 20);
 
-        long totalLines = 0;
-        long passedLines = 0;
-        long skippedMalformed = 0;
-        long skippedFilter = 0;
-        long skippedCapped = 0;
-
-        long warnedNonNumericPrior = 0;
+        long inLines = 0; // data lines read (excluding header)
+        long outLines = 0; // data lines written (excluding header)
+        long skipped = 0; // filtered or capped
 
         try (BufferedReader br = new BufferedReader(new InputStreamReader(
                 new GZIPInputStream(new FileInputStream(detailsGz.toFile())),
                 StandardCharsets.UTF_8))) {
 
             String header = br.readLine();
-            if (header == null) {
+            if (header == null)
                 throw new IllegalArgumentException("Input is empty: " + detailsGz);
-            }
 
-            // ヘッダーを簡易的に確認
-            verifyHeaderOrWarn(header);
-
-            // headerを各partに書く
+            // propagate header to all parts
             for (PartWriter w : writers)
                 w.writeLine(header);
 
             String line;
             while ((line = br.readLine()) != null) {
-                if (line.isEmpty())
+                if (line.isEmpty() || line.charAt(0) == '#')
                     continue;
-                if (line.charAt(0) == '#')
-                    continue;
+                inLines++;
 
-                totalLines++;
-
-                // 12列（タブ11個）チェック
-                if (countTabs(line) != 11) {
-                    skippedMalformed++;
-                    continue;
-                }
-
-                // 必要列だけ抜く（readName）
+                // Extract only what we need
                 String readName = getColumn(line, COL_READNAME_1B);
-                if (readName == null || readName.isEmpty()) {
-                    skippedMalformed++;
-                    continue;
-                }
-
-                int fragLen = parseIntSafe(getColumn(line, COL_FRAGLEN_1B), Integer.MIN_VALUE);
-                int baseQ = parseIntSafe(getColumn(line, COL_BASEQ_1B), Integer.MIN_VALUE);
-                int offset = parseIntSafe(getColumn(line, COL_OFFSET_1B), Integer.MIN_VALUE);
+                int fragLen = parseInt(getColumn(line, COL_FRAGLEN_1B));
+                int baseQ = parseInt(getColumn(line, COL_BASEQ_1B));
+                int offset = parseInt(getColumn(line, COL_OFFSET_1B));
                 String prior = getColumn(line, COL_PRIOR_1B);
 
-                // FinaleMeと同じフィルタを適用
-                if (!(fragLen > 30 && fragLen < 500)) {
-                    skippedFilter++;
+                // Same row-level filters as FinaleMe.processMatrixFile
+                if (fragLen <= 30 || fragLen >= 500) {
+                    skipped++;
                     continue;
                 }
-                if (!(baseQ > 5)) {
-                    skippedFilter++;
+                if (baseQ <= 5) {
+                    skipped++;
                     continue;
                 }
-                if (!(offset >= 0)) {
-                    skippedFilter++;
+                if (offset < 0) {
+                    skipped++;
                     continue;
                 }
 
-                // MAX_PER_READ
+                // MAX_PER_READ cap (per fragment/readName)
                 int c = seen.getOrDefault(readName, 0) + 1;
                 if (c > maxPerRead) {
-                    skippedCapped++;
+                    skipped++;
                     continue;
                 }
                 seen.put(readName, c);
 
-                // prior が NaN/empty の場合は 0 に置換
-                // 数値でない場合はWARN
+                // Normalize methyPrior: NaN/nan/empty -> 0 (keep everything else as-is)
                 if (prior == null || prior.isEmpty() || "NaN".equals(prior) || "nan".equals(prior)) {
                     line = replaceLastColumnWithZero(line);
-                } else if (!looksNumeric(prior)) {
-                    // 数値として読めないpriorはWARN
-                    if (warnedNonNumericPrior < MAX_PRIOR_WARN) {
-                        System.err.println(
-                                "WARN: non-numeric methyPrior detected. readName=" + readName + " methyPrior=" + prior);
-                    } else if (warnedNonNumericPrior == MAX_PRIOR_WARN) {
-                        System.err.println(
-                                "WARN: too many non-numeric methyPrior warnings; suppressing further warnings.");
-                    }
-                    warnedNonNumericPrior++;
                 }
 
                 int part = (readName.hashCode() & 0x7fffffff) % parts;
                 writers[part].writeLine(line);
-                passedLines++;
+                outLines++;
 
-                if ((passedLines % 1_000_000) == 0) {
-                    System.err.println("INFO: wrote lines=" + passedLines + " (seen input=" + totalLines + ")");
+                if ((outLines % 1_000_000) == 0) {
+                    System.err.println("INFO: written=" + outLines + " read=" + inLines);
                 }
             }
         } finally {
@@ -161,58 +137,13 @@ public class PrepareAndSplitInputMatrix {
             }
         }
 
-        // サマリ
-        System.err.println("INFO: total input lines (non-header) = " + totalLines);
-        System.err.println("INFO: passed lines (written)        = " + passedLines);
-        System.err.println("INFO: skipped malformed             = " + skippedMalformed);
-        System.err.println("INFO: skipped by filters            = " + skippedFilter);
-        System.err.println("INFO: skipped by MAX_PER_READ cap   = " + skippedCapped);
-        System.err.println("INFO: unique readNames tracked      = " + seen.size());
-        System.err.println("INFO: non-numeric methyPrior warns  = " + warnedNonNumericPrior);
-
-        // 出力ファイルの存在とサイズを確認
-        for (int i = 0; i < parts; i++) {
-            Path out = outDir.resolve(String.format("input_matrix.part%03d.tsv.gz", i));
-            if (!Files.isRegularFile(out) || Files.size(out) == 0) {
-                throw new IllegalStateException("Missing/empty part: " + out);
-            }
-        }
-        System.err.println("OK: all part files created in " + outDir);
+        System.err.println("INFO: data lines read    = " + inLines);
+        System.err.println("INFO: data lines written = " + outLines);
+        System.err.println("INFO: skipped lines      = " + skipped);
+        System.err.println("INFO: unique readNames   = " + seen.size());
+        System.err.println("OK: wrote parts to " + outDir);
     }
 
-    // ヘッダーの簡易検査用
-    private static void verifyHeaderOrWarn(String headerLine) {
-        int tabs = countTabs(headerLine);
-        if (tabs != 11) {
-            System.err.println(
-                    "WARN: header does not look like 12 columns (tabCount=" + tabs + "). header=" + headerLine);
-            return;
-        }
-
-        String[] cols = headerLine.split("\t", -1);
-        // 期待列名
-        checkHeaderCol(cols, COL_READNAME_1B, "readName");
-        checkHeaderCol(cols, COL_FRAGLEN_1B, "FragLen");
-        checkHeaderCol(cols, COL_BASEQ_1B, "baseQ");
-        checkHeaderCol(cols, COL_OFFSET_1B, "Offset_frag");
-        checkHeaderCol(cols, COL_PRIOR_1B, "methyPrior");
-    }
-
-    private static void checkHeaderCol(String[] cols, int col1B, String expected) {
-        int idx = col1B - 1;
-        if (idx < 0 || idx >= cols.length) {
-            System.err.println("WARN: header missing column index " + col1B + " (expected=" + expected + ")");
-            return;
-        }
-        String actual = cols[idx];
-        if (!expected.equals(actual)) {
-            System.err.println(
-                    "WARN: header column mismatch at col " + col1B +
-                            " expected='" + expected + "' actual='" + actual + "'");
-        }
-    }
-
-    // gzipファイルに書くBufferedWriterを作るヘルパークラス
     private static final class PartWriter implements Closeable {
         private final BufferedWriter bw;
 
@@ -238,17 +169,9 @@ public class PrepareAndSplitInputMatrix {
         }
     }
 
-    // 行内のタブ数を確認
-    private static int countTabs(String line) {
-        int n = 0;
-        for (int i = 0, len = line.length(); i < len; i++) {
-            if (line.charAt(i) == '\t')
-                n++;
-        }
-        return n;
-    }
-
-    // 1-based列を取り出す
+    /**
+     * Extract Nth (1-based) tab-delimited column without splitting whole line.
+     */
     private static String getColumn(String line, int col1Based) {
         int target = col1Based - 1;
         int start = 0;
@@ -258,9 +181,8 @@ public class PrepareAndSplitInputMatrix {
         for (int i = 0; i <= len; i++) {
             boolean atEnd = (i == len);
             if (atEnd || line.charAt(i) == '\t') {
-                if (col == target) {
+                if (col == target)
                     return line.substring(start, i);
-                }
                 col++;
                 start = i + 1;
                 if (start > len)
@@ -270,36 +192,16 @@ public class PrepareAndSplitInputMatrix {
         return null;
     }
 
-    private static int parseIntSafe(String s, int fallback) {
-        if (s == null)
-            return fallback;
-        try {
-            return Integer.parseInt(s);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+    private static int parseInt(String s) {
+        // Assumption: internal pipeline produces valid integers here.
+        return Integer.parseInt(s);
     }
 
-    // 行の最後の列（methyPrior）を "0" に置換
+    /**
+     * Replace last column (methyPrior) with "0" (expects 12-column TSV).
+     */
     private static String replaceLastColumnWithZero(String line) {
         int lastTab = line.lastIndexOf('\t');
-        if (lastTab < 0)
-            return line;
         return line.substring(0, lastTab + 1) + "0";
-    }
-
-    // methyPriorが数値でない場合のWARN抑制用
-    private static boolean looksNumeric(String s) {
-        if (s == null)
-            return false;
-        String t = s.trim();
-        if (t.isEmpty())
-            return false;
-        try {
-            Double.parseDouble(t);
-            return true;
-        } catch (NumberFormatException e) {
-            return false;
-        }
     }
 }
