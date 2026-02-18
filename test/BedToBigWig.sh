@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-IN="out/prediction.all.parts128.gz"
+IN="out/prediction.all.parts.gz"
 CHRSIZES="test/data/BH01.chrom.sizes"
 PREFIX="BH01"
 

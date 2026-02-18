@@ -6,7 +6,7 @@ cd "${SCRIPT_DIR}/.."
 
 PRED_DIR="out/pred_parts"
 GLOB="${PRED_DIR}/prediction.part*.gz"
-OUT_ALL="out/prediction.all.parts128.gz"
+OUT_ALL="out/prediction.all.parts.gz"
 
 PRED_FILES=( $GLOB )
 if [ "${#PRED_FILES[@]}" -eq 0 ]; then
