@@ -2,7 +2,7 @@
 set -euo pipefail
 
 IN="out/prediction.all.G1000.low_cov.gz"
-CHRSIZES="test/data/BH01.chrom.sizes"
+CHRSIZES="test/data/hg19.nochr.chrom.sizes"
 PREFIX="BH01"
 
 OUTDIR="out/bedgraph"
