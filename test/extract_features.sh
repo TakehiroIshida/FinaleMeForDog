@@ -12,8 +12,8 @@ IGV="lib/igv.jar"
 
 CP="${JAR}:${GATK}:${HDF5}:${GENIO}:${IGV}"
 
-CG="data/zenodo_ref/CG_motif.hg19.common_chr.pos_only.bedgraph.gz"
-DARK="data/zenodo_ref/dark.hg19.bed"
+CG="data/zenodo_ref/CG_motif.hg19.22only.nochr.bedgraph.gz"
+DARK="data/zenodo_ref/dark.hg19.22only.nochr.bed.gz"
 BAM="test/data/G1000.Phase3.low_cav.chr22.bam"
 REF2BIT="data/zenodo_ref/hg19.2bit"
 PRIOR="data/zenodo_ref/wgbs_buffyCoat_jensen2015GB.methy.hg19.bw"
