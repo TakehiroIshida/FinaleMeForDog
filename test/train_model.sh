@@ -9,7 +9,7 @@ JAR="target/FinaleMe-0.58-jar-with-dependencies.jar"
 CP="${JAR}:lib/*"
 
 # ===== Inputs =====
-PARTS_DIR="out/parts"
+PARTS_DIR="out/partsG1000"
 TRAIN_PART_N="${1:-8}"     # 学習に使うpart数（まず8推奨）
 
 # ===== Outputs =====
@@ -61,7 +61,7 @@ rm -f "$TMP_TRAIN"
 # header を安全に取得（パイプで head を使わない）
 HEADER="$(python - << 'PY'
 import gzip
-p="out/parts/input_matrix.part000.tsv.gz"
+p="out/partsG1000/input_matrix.part000.tsv.gz"
 with gzip.open(p, "rt") as f:
     print(f.readline().rstrip("\n"))
 PY

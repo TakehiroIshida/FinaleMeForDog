@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-DETAILS="out/CpgMultiMetricsStats.hg19.details.bed.gz"
+DETAILS="out/CpgMultiMetricsStats.G1000.low_cov.details.bed.gz"
 
 OUT_DIR="out"
 mkdir -p "$OUT_DIR"
@@ -18,7 +18,7 @@ mkdir -p "$OUT_DIR"
 #   ./make_input_matrix_full.sh 10
 MAX_PER_READ="${1:-20}"
 
-INPUT_MAT_FULL="${OUT_DIR}/input_matrix.details.full.max${MAX_PER_READ}.tsv.gz"
+INPUT_MAT_FULL="${OUT_DIR}/input_matrix.details.full.max${MAX_PER_READ}.G1000.low_cov.tsv.gz"
 TMP_OUT="${INPUT_MAT_FULL}.tmp.$$"
 rm -f "$TMP_OUT"
 

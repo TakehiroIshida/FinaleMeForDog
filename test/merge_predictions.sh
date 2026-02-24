@@ -4,13 +4,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-PRED_DIR="out/pred_parts"
+PRED_DIR="out/pred_partsG1000"
 GLOB="${PRED_DIR}/prediction.part*.gz"
 
 OUT_DIR="out"
 mkdir -p "$OUT_DIR"
 
-OUT_ALL="${OUT_DIR}/prediction.all.gz"
+OUT_ALL="${OUT_DIR}/prediction.all.G1000.low_cov.gz"
 TMP_OUT="${OUT_ALL}.tmp.$$"
 rm -f "$TMP_OUT"
 
@@ -29,7 +29,7 @@ echo "INFO: merging ${#PRED_FILES_SORTED[@]} files" >&2
 HEADER="$(python - << 'PY'
 import gzip, sys
 import glob
-files = sorted(glob.glob("out/pred_parts/prediction.part*.gz"))
+files = sorted(glob.glob("out/pred_partsG1000/prediction.part*.gz"))
 with gzip.open(files[0], "rt") as f:
     print(f.readline().rstrip("\n"))
 PY

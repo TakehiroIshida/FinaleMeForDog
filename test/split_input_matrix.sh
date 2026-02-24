@@ -6,11 +6,11 @@ cd "${SCRIPT_DIR}/.."
 
 # ===== Inputs =====
 MAX_PER_READ="${1:-20}"
-INPUT_MAT="out/input_matrix.details.full.max${MAX_PER_READ}.tsv.gz"
+INPUT_MAT="out/input_matrix.details.full.max${MAX_PER_READ}.G1000.low_cov.tsv.gz"
 
 # ===== Split settings =====
 PARTS="${2:-128}"
-OUT_DIR="out/parts"
+OUT_DIR="out/partsG1000"
 LOG="out/split_input_matrix.$(date +%Y%m%d_%H%M%S).log"
 
 mkdir -p "$OUT_DIR"

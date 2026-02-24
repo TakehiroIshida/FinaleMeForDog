@@ -10,12 +10,12 @@ CP="${JAR}:lib/*"
 
 # ===== Inputs =====
 MODEL="out/selftrained.states2.features3.hmm_model"
-PARTS_DIR="out/parts"
+PARTS_DIR="out/partsG1000"
 PART_GLOB="${PARTS_DIR}/input_matrix.part*.tsv.gz"
 
 # ===== Outputs =====
-PRED_DIR="out/pred_parts"
-LOG_DIR="out/logs_pred_parts"
+PRED_DIR="out/pred_partsG1000"
+LOG_DIR="out/logs_pred_partsG1000"
 mkdir -p "$PRED_DIR" "$LOG_DIR"
 
 # ===== Runtime =====
