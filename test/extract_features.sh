@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "${SCRIPT_DIR}/.."
+
+JAR="target/FinaleMe-0.58-jar-with-dependencies.jar"
+GATK="lib/gatk-package-distribution-3.3.jar"
+HDF5="lib/sis-jhdf5-batteries_included.jar"
+GENIO="lib/java-genomics-io.jar"
+IGV="lib/igv.jar"
+
+CP="${JAR}:${GATK}:${HDF5}:${GENIO}:${IGV}"
+
+CG="data/zenodo_ref/CG_motif.hg19.common_chr.pos_only.bedgraph.gz"
+DARK="data/zenodo_ref/dark.hg19.bed"
+BAM="test/data/G1000.Phase3.low_cav.chr22.bam"
+REF2BIT="data/zenodo_ref/hg19.2bit"
+PRIOR="data/zenodo_ref/wgbs_buffyCoat_jensen2015GB.methy.hg19.bw"
+
+OUT_DIR="out"
+OUT="${OUT_DIR}/CpgMultiMetricsStats.G1000.low_cov.details.bed.gz"
+TMP_OUT="${OUT}.tmp.$$"
+LOG="${OUT_DIR}/first_step.$(date +%Y%m%d_%H%M%S).log"
+
+mkdir -p "$OUT_DIR"
+
+for f in "$JAR" "$GATK" "$HDF5" "$GENIO" "$IGV" "${REF2BIT}" "${CG}" "${DARK}" "${PRIOR}" "${BAM}"; do
+  if [ ! -f "$f" ]; then
+    echo "ERROR: missing file: $f" >&2
+    exit 1
+  fi
+done
+
+# BAM index 明示チェック
+if [ ! -f "${BAM}.bai" ] && [ ! -f "${BAM%.bam}.bai" ]; then
+  echo "ERROR: BAM index (.bai) not found for $BAM" >&2
+  exit 1
+fi
+
+rm -f "$TMP_OUT"
+
+java -Xmx24G -cp "$CP" org.cchmc.epifluidlab.finaleme.utils.CpgMultiMetricsStats \
+  "$REF2BIT" \
+  "$CG" \
+  "$CG" \
+  "$BAM" \
+  "$TMP_OUT" \
+  -excludeRegions "$DARK" \
+  -valueWigs methyPrior:0:"$PRIOR" \
+  -wgsMode \
+  2> "$LOG"
+
+gzip -t "$TMP_OUT"
+mv -f "$TMP_OUT" "$OUT"
+echo "OK: wrote $OUT" >&2
+echo "LOG: $LOG" >&2
