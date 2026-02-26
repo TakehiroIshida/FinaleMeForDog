@@ -16,7 +16,7 @@ CG="data/zenodo_ref/CG_motif.hg19.22only.nochr.bedgraph.gz"
 DARK="data/zenodo_ref/dark.hg19.22only.nochr.bed.gz"
 BAM="test/data/G1000.Phase3.low_cav.chr22.bam"
 REF2BIT="data/zenodo_ref/hg19.nochr.2bit"
-PRIOR="data/zenodo_ref/wgbs_buffyCoat_jensen2015GB.methy.hg19.bw"
+PRIOR="data/zenodo_ref/wgbs_buffyCoat_jensen2015GB.methy.hg19.nochr.bw"
 
 OUT_DIR="out"
 OUT="${OUT_DIR}/CpgMultiMetricsStats.G1000.low_cov.details.bed.gz"
